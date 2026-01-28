@@ -1,0 +1,41 @@
+// Paste the schema below in https://dbdiagram.io/d
+Table customers {
+  id SERIAL [pk, increment]
+  name VARCHAR(60) [not null]
+  created_at TIMESTAMP [pk, not null]
+  updated_at TIMESTAMP [not null]
+}
+
+Table account_types {
+  id SERIAL [pk, increment]
+  description VARCHAR(200) [not null]
+}
+
+Table accounts {
+  id SERIAL [pk, unique]
+  id_customer INTEGER [pk, not null, ref: > customers.id]
+  id_type INTEGER [pk, not null, ref: > account_types.id]
+  balance INTEGER [not null]
+}
+
+Table deposits {
+  id SERIAL [pk, increment]
+  account_id INTEGER [pk, not null, ref: > accounts.id]
+  executed_at TIMESTAMP [pk, not null]
+  amount INTEGER [not null]
+}
+
+Table withdrawals {
+  id SERIAL [pk, increment]
+  account_id INTEGER [pk, not null, ref: > accounts.id]
+  executed_at TIMESTAMP [pk, not null]
+  amount INTEGER [not null]
+}
+
+Table transfers {
+  id SERIAL [pk, increment]
+  id_account_from INTEGER [pk, not null, ref: > accounts.id]
+  id_account_to INTEGER [pk, not null, ref: > accounts.id]
+  executed_at TIMESTAMP [pk, not null]
+  amount INTEGER [not null]
+}

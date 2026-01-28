@@ -6,11 +6,10 @@ CREATE DATABASE erl_bank;
 BEGIN;
 CREATE TABLE customers (
     id SERIAL UNIQUE,
-    cpf VARCHAR(14) NOT NULL UNIQUE,
     name VARCHAR(60) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(id, cpf, created_at)
+    PRIMARY KEY(id, created_at)
 );
 
 CREATE TABLE account_types (
@@ -22,22 +21,34 @@ CREATE TABLE accounts (
     id SERIAL UNIQUE,
     id_type INTEGER NOT NULL REFERENCES account_types(id) ON DELETE CASCADE,
     id_customer INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-    balance NUMERIC(10,2) NOT NULL DEFAULT 0 CONSTRAINT accounts_balance_positive CHECK (balance >= 0),
+    balance INTEGER NOT NULL DEFAULT 0 CONSTRAINT accounts_balance_positive CHECK (balance >= 0),
     PRIMARY KEY(id, id_type, id_customer)
 );
 
-CREATE TABLE balance_operations (
-    id SERIAL PRIMARY KEY,
-    description TEXT NOT NULL UNIQUE
+CREATE TABLE deposits (
+  id SERIAL UNIQUE,
+  id_account INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  amount INTEGER NOT NULL CONSTRAINT CHECK(amount >= 0),
+  PRIMARY KEY(id, id_account, executed_at)
 );
 
-CREATE TABLE statement_history (
-    id_account_origin INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    id_account_target INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    id_balance_operation INTEGER NOT NULL REFERENCES balance_operations(id) ON DELETE CASCADE,
-    executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(id_account_origin, id_balance_operation, id_account_target, executed_at)
+CREATE TABLE withdrawals (
+  id SERIAL UNIQUE,
+  id_account INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  amount INTEGER NOT NULL CONSTRAINT CHECK(amount >= 0),
+  PRIMARY KEY(id, id_account, executed_at)
 );
+
+CREATE TABLE transfer (
+  id SERIAL UNIQUE,
+  id_account_from INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  id_account_to INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+  executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  amount INTEGER NOT NULL CONSTRAINT CHECK(amount >= 0)
+);
+
 
 INSERT INTO account_types(description)
 VALUES
@@ -45,23 +56,18 @@ VALUES
     ('savings'), -- Money storage account
     ('internal'); -- Used for internal tests
 
-INSERT INTO balance_operations(description)
-VALUES
-    ('deposit'),
-    ('withdraw'),
-    ('transfer');
 
 -------------------------------------------------
--- Utility functions to be used by procedures
+-- Customer and Account creation
 -------------------------------------------------
-CREATE OR REPLACE FUNCTION insert_in_customers(cpf VARCHAR(14), name VARCHAR(60))
+CREATE OR REPLACE FUNCTION insert_in_customers(name VARCHAR(60))
 LANGUAGE plpgsql
 RETURNS INTEGER AS $$
 DECLARE
   new_customer_id INTEGER;
 BEGIN
-    INSERT INTO customers(cpf, name)
-    VALUES(cpf, name)
+    INSERT INTO customers(name)
+    VALUES(name)
     RETURNING id INTO new_customer_id;
 
     RETURN new_customer_id;
@@ -82,53 +88,37 @@ BEGIN
     RETURN FOUND;
 END; $$;
 
--- Insert into accounts
-
-CREATE OR REPLACE FUNCTION deposit_in_accounts(id_account int, amount numeric(10,2))
+CREATE OR REPLACE FUNCTION insert_in_accounts(id_customer INTEGER, account_type INTEGER)
 LANGUAGE plpgsql
-RETURNS boolean AS $$
-BEGIN
-    IF amount <= 0 THEN
-        RAISE EXCEPTION 'Deposit amount must be greater than 0';
-    END IF;
-
-    UPDATE accounts AS a
-    SET a.balance = a.balance + amount
-    WHERE a.id = id_account;
-
-    IF NOT FOUND THEN
-       RAISE EXCEPTION 'Account % not found', id_account;
-    END IF;
-
-    RETURN FOUND;
-END; $$;
-
-CREATE OR REPLACE FUNCTION withdraw_from_accounts(id_account int, amount numeric(10,2))
-LANGUAGE plpgsql
-RETURNS boolean AS $$
+RETURN INTEGER AS $$
 DECLARE
-  current_balance numeric(10,2);
+  new_account_id INTEGER;
 BEGIN
-    IF amount <= 0 THEN
-        RAISE EXCEPTION 'Withdraw amount must be greater than 0';
-    END IF;
+    INSERT INTO accounts(id_customer, id_type)
+    VALUES(id_customer, account_type)
+    RETURNING id INTO new_account_id;
 
-    current_balance := SELECT balance INTO current_balance FROM accounts WHERE id = id_account;
-
-    UPDATE accounts AS a
-    SET a.balance = current_balance - amount
-    WHERE a.id = id_account;
-
-    IF NOT FOUND THEN
-       RAISE EXCEPTION 'Account % not found', id_account;
-    END IF;
-
-    RETURN FOUND;
-EXCEPTION
-    WHEN accounts_balance_positive THEN
-        RAISE EXCEPTION 'Insufficient funds!';
-    WHEN OTHER THEN
-        RAISE;
+    RETURN new_account_id;
 END; $$;
+
+CREATE OR REPLACE PROCEDURE create_customer_and_account(name VARCHAR(60), account_type INTEGER)
+LANGUAGE plpgsql AS $$
+DECLARE
+  new_customer_id INTEGER;
+  new_account_id INTEGER;
+BEGIN
+    new_customer_id := SELECT insert_in_customers(name);
+    new_account_id := SELECT insert_in_accounts(new_customer_id, account_type);
+END; $$;
+
+CREATE OR REPLACE PROCEDURE create_account(customer_id INTEGER, account_type INTEGER)
+LANGUAGE plpgsql AS $$
+DECLARE
+  new_account_id INTEGER;
+BEGIN
+    new_account_id := SELECT insert_in_accounts(customer_id, account_type);
+END; $$;
+
+
 
 COMMIT;
