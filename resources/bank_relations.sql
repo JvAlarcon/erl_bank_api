@@ -82,7 +82,7 @@ BEGIN
     WHERE c.id = id_customer;
 
     IF NOT FOUND THEN
-       RAISE EXCEPTION 'Account % not found', id_account;
+       RAISE EXCEPTION 'Customer % not found', id_customer;
     END IF;
 
     RETURN FOUND;
@@ -108,17 +108,137 @@ DECLARE
   new_account_id INTEGER;
 BEGIN
     new_customer_id := SELECT insert_in_customers(name);
-    new_account_id := SELECT insert_in_accounts(new_customer_id, account_type);
+    SELECT insert_in_accounts(new_customer_id, account_type);
+    COMMIT;
 END; $$;
 
-CREATE OR REPLACE PROCEDURE create_account(customer_id INTEGER, account_type INTEGER)
+CREATE OR REPLACE PROCEDURE create_account(id_customer INTEGER, account_type INTEGER)
+LANGUAGE plpgsql AS $$
+BEGIN
+    SELECT insert_in_accounts(id_customer, account_type);
+    COMMIT;
+END; $$;
+
+-------------------------------------------------
+-- Deposit operation
+-------------------------------------------------
+CREATE OR REPLACE FUNCTION insert_in_deposits(id_account INTEGER, amount INTEGER)
+LANGUAGE plpgsql AS $$
+RETURNS INTEGER AS $$
+DECLARE
+  new_deposit_id INTEGER;
+BEGIN
+    IF amount <= 0 THEN
+        RAISE EXCEPTION 'Deposit amount must be greater than 0';
+    END IF;
+    
+    UPDATE accounts AS a
+    SET a.balance = a.balance + amount
+    WHERE a.id = id_account;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Account % not found', id_account;
+    END IF;
+
+    INSERT INTO deposits(id_account, amount)
+    VALUES (id_account, amount)
+    RETURNING id INTO new_deposit_id;
+    
+    RETURN new_deposit_id;
+END; $$;
+
+CREATE OR REPLACE PROCEDURE deposit(id_account INTEGER, amount INTEGER)
+LANGUAGE plpgsql AS $$
+BEGIN
+    SELECT insert_in_deposits(id_account, amount);
+    COMMIT;
+END; $$;
+
+-------------------------------------------------
+-- Withdrawal operation
+-------------------------------------------------
+CREATE OR REPLACE FUNCTION insert_in_withdrawals(id_account INTEGER, amount INTEGER)
+LANGUAGE plpgsql AS $$
+RETURN INTEGER AS $$
+DECLARE
+  new_withdrawal_id INTEGER;
+BEGIN
+    IF amount <= 0 THEN
+        RAISE EXCEPTION 'Withdraw amount must be greater than 0';
+    END IF;
+
+    UPDATE accounts AS a
+    SET a.balance = a.balance - amount
+    WHERE a.id = id_account;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Account % not found', id_account;
+    END IF;
+
+    INSERT INTO withdrawals(id_account, amount)
+    VALUES (id_account, amount)
+    RETURNING id INTO new_withdrawal_id;
+
+    RETURN new_withdrawal_id;
+EXCEPTION
+    WHEN accounts_balance_positive THEN
+        RAISE 'Insufficient funds!';
+    WHEN OTHER THEN
+        RAISE;
+END; $$;
+
+CREATE OR REPLACE PROCEDURE withdraw(id_account INTEGER, amount INTEGER)
+LANGUAGE plpgsql AS $$
+BEGIN
+    SELECT insert_in_withdrawals(id_account, amount);
+    COMMIT;
+END; $$;
+
+-------------------------------------------------
+-- Transfer operation
+-------------------------------------------------
+CREATE OR REPLACE FUNCTION insert_in_transfers(id_account_from INTEGER, id_account_to INTEGER, amount INTEGER)
 LANGUAGE plpgsql AS $$
 DECLARE
-  new_account_id INTEGER;
+  new_transfer_id INTEGER;
 BEGIN
-    new_account_id := SELECT insert_in_accounts(customer_id, account_type);
+    IF amount <= THEN
+        RAISE EXCEPTION 'Transfer amount must be greater than 0';
+    END IF;
+
+    UPDATE accounts AS a
+    SET a.balance = a.balance - amount
+    WHERE a.id = id_account_from;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Account % not found', id_account_from;
+    END IF;
+
+    UPDATE accounts AS a
+    SET a.balance = a.balance + amount
+    WHERE a.id = id_account_to;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Account % not found', id_account_to;
+    END IF;
+
+    INSERT INTO transfer(id_account_from, id_account_to, amount)
+    VALUES (id_account_from, id_account_to, amount)
+    RETURNING id INTO new_transfer_id;
+
+    RETURN new_transfer_id;
+EXCEPTION
+    WHEN accounts_balance_positive THEN
+        RAISE 'Account % has insufficient funds!', id_account_from;
+    WHEN OTHER THEN
+        RAISE;
 END; $$;
 
-
-
+CREATE OR REPLACE PROCEDURE transfer(id_account_from INTEGER, id_account_to INTEGER, amount INTEGER)
+LANGUAGE plpgsql AS $$
+BEGIN
+    SELECT insert_in_transfers(id_account_from, id_account_to, amount);
+    COMMIT;
+END; $$;
+    
 COMMIT;
