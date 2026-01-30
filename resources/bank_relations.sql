@@ -4,6 +4,11 @@ CREATE DATABASE erl_bank;
 \c erl_bank;
 
 BEGIN;
+
+-------------------------------------------------
+-- Entities relations
+-------------------------------------------------
+
 CREATE TABLE customers (
     id SERIAL UNIQUE,
     name VARCHAR(60) NOT NULL,
@@ -55,6 +60,35 @@ VALUES
     ('checking'), -- Default everyday account
     ('savings'), -- Money storage account
     ('internal'); -- Used for internal tests
+
+-------------------------------------------------
+-- Views
+-------------------------------------------------
+CREATE OR REPLACE VIEW accounts_details AS (
+    SELECT ac.id, c.name, c.updated_at, act.description
+    FROM customers AS c
+    INNER JOIN accounts AS ac ON c.id = ac.id_account
+    INNER JOIN acccount_types AS act ON act.id = ac.id_type
+    ORDER BY ac.id
+);
+
+CREATE OR REPLACE FUNCTION get_account_details(id_account INTEGER)
+RETURNS accounts_details
+LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN QUERY SELECT * FROM accounts_details WHERE ac.id = id_account;
+END; $$;
+
+CREATE OR REPLACE FUNCTION list_accounts_details(row_limit INTEGER)
+RETURNS SETOF accounts_details
+LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN QUERY SELECT * FROM accounts_details LIMIT row_limit;
+END; $$;
+
+CREATE OR REPLACE VIEW accounts_statement AS (
+    SELECT a.id, a.balance, d.amount, w.amount, t.amount
+);
 
 
 -------------------------------------------------
