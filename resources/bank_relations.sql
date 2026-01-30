@@ -29,7 +29,7 @@ CREATE TABLE deposits (
   id SERIAL UNIQUE,
   id_account INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  amount INTEGER NOT NULL CONSTRAINT CHECK(amount >= 0),
+  amount INTEGER NOT NULL CONSTRAINT deposits_amount_positive CHECK(amount >= 0),
   PRIMARY KEY(id, id_account, executed_at)
 );
 
@@ -37,16 +37,16 @@ CREATE TABLE withdrawals (
   id SERIAL UNIQUE,
   id_account INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  amount INTEGER NOT NULL CONSTRAINT CHECK(amount >= 0),
+  amount INTEGER NOT NULL CONSTRAINT withdrawals_amount_positive CHECK(amount >= 0),
   PRIMARY KEY(id, id_account, executed_at)
 );
 
 CREATE TABLE transfer (
   id SERIAL UNIQUE,
   id_account_from INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  id_account_to INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+  id_account_to INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   executed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  amount INTEGER NOT NULL CONSTRAINT CHECK(amount >= 0)
+  amount INTEGER NOT NULL CONSTRAINT transfers_amount_positive CHECK(amount >= 0)
 );
 
 
@@ -60,22 +60,22 @@ VALUES
 -------------------------------------------------
 -- Customer and Account creation
 -------------------------------------------------
-CREATE OR REPLACE FUNCTION insert_in_customers(name VARCHAR(60))
-LANGUAGE plpgsql
-RETURNS INTEGER AS $$
+CREATE OR REPLACE FUNCTION insert_in_customers(p_name VARCHAR(60))
+RETURNS INTEGER
+LANGUAGE plpgsql AS $$
 DECLARE
   new_customer_id INTEGER;
 BEGIN
     INSERT INTO customers(name)
-    VALUES(name)
+    VALUES(p_name)
     RETURNING id INTO new_customer_id;
 
     RETURN new_customer_id;
 END; $$;
 
 CREATE OR REPLACE FUNCTION update_in_customers(id_customer INTEGER, name VARCHAR(60))
-LANGUAGE plpgsql
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql AS $$
 BEGIN
     UPDATE customers AS c
     SET c.name = name
@@ -89,8 +89,8 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE FUNCTION insert_in_accounts(id_customer INTEGER, account_type INTEGER)
-LANGUAGE plpgsql
-RETURN INTEGER AS $$
+RETURNS INTEGER
+LANGUAGE plpgsql AS $$
 DECLARE
   new_account_id INTEGER;
 BEGIN
@@ -107,7 +107,7 @@ DECLARE
   new_customer_id INTEGER;
   new_account_id INTEGER;
 BEGIN
-    new_customer_id := SELECT insert_in_customers(name);
+    new_customer_id := insert_in_customers(name);
     SELECT insert_in_accounts(new_customer_id, account_type);
     COMMIT;
 END; $$;
@@ -123,15 +123,11 @@ END; $$;
 -- Deposit operation
 -------------------------------------------------
 CREATE OR REPLACE FUNCTION insert_in_deposits(id_account INTEGER, amount INTEGER)
+RETURNS INTEGER
 LANGUAGE plpgsql AS $$
-RETURNS INTEGER AS $$
 DECLARE
   new_deposit_id INTEGER;
 BEGIN
-    IF amount <= 0 THEN
-        RAISE EXCEPTION 'Deposit amount must be greater than 0';
-    END IF;
-    
     UPDATE accounts AS a
     SET a.balance = a.balance + amount
     WHERE a.id = id_account;
@@ -145,6 +141,15 @@ BEGIN
     RETURNING id INTO new_deposit_id;
     
     RETURN new_deposit_id;
+EXCEPTION
+    WHEN check_violation THEN
+        IF SQLERRM LIKE '%deposits_amount_positive%' THEN
+            RAISE EXCEPTION 'Deposit amount must be greater than 0';
+	ELSE
+	    RAISE;
+	END IF;
+    WHEN OTHERS THEN
+        RAISE;
 END; $$;
 
 CREATE OR REPLACE PROCEDURE deposit(id_account INTEGER, amount INTEGER)
@@ -158,15 +163,11 @@ END; $$;
 -- Withdrawal operation
 -------------------------------------------------
 CREATE OR REPLACE FUNCTION insert_in_withdrawals(id_account INTEGER, amount INTEGER)
+RETURNS INTEGER
 LANGUAGE plpgsql AS $$
-RETURN INTEGER AS $$
 DECLARE
   new_withdrawal_id INTEGER;
 BEGIN
-    IF amount <= 0 THEN
-        RAISE EXCEPTION 'Withdraw amount must be greater than 0';
-    END IF;
-
     UPDATE accounts AS a
     SET a.balance = a.balance - amount
     WHERE a.id = id_account;
@@ -181,9 +182,15 @@ BEGIN
 
     RETURN new_withdrawal_id;
 EXCEPTION
-    WHEN accounts_balance_positive THEN
-        RAISE 'Insufficient funds!';
-    WHEN OTHER THEN
+    WHEN check_violation THEN
+        IF SQLERRM LIKE '%withdrawals_amount_positive%' THEN
+	    RAISE 'Withdraw amount must be greater than 0';
+	ELSIF SQLERRM LIKE '%accounts_balance_positive%' THEN
+	    RAISE 'Account % has insufficient funds!', id_account;
+	ELSE
+	    RAISE;
+	END IF;
+    WHEN OTHERS THEN
         RAISE;
 END; $$;
 
@@ -198,14 +205,11 @@ END; $$;
 -- Transfer operation
 -------------------------------------------------
 CREATE OR REPLACE FUNCTION insert_in_transfers(id_account_from INTEGER, id_account_to INTEGER, amount INTEGER)
+RETURNS INTEGER
 LANGUAGE plpgsql AS $$
 DECLARE
   new_transfer_id INTEGER;
 BEGIN
-    IF amount <= THEN
-        RAISE EXCEPTION 'Transfer amount must be greater than 0';
-    END IF;
-
     UPDATE accounts AS a
     SET a.balance = a.balance - amount
     WHERE a.id = id_account_from;
@@ -228,9 +232,15 @@ BEGIN
 
     RETURN new_transfer_id;
 EXCEPTION
-    WHEN accounts_balance_positive THEN
-        RAISE 'Account % has insufficient funds!', id_account_from;
-    WHEN OTHER THEN
+    WHEN check_violation THEN
+        IF SQLERRM LIKE '%transfers_amount_positive%' THEN
+	    RAISE 'Transfer amount must be greater than 0';
+	ELSIF SQLERRM LIKE '%accounts_balance_positive%' THEN
+	    RAISE 'Account % has insufficient funds!', id_account_from;
+	ELSE
+	    RAISE;
+	END IF;
+    WHEN OTHERS THEN
         RAISE;
 END; $$;
 
