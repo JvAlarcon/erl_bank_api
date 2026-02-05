@@ -87,7 +87,18 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE VIEW accounts_statement AS (
-    SELECT a.id, a.balance, d.amount, w.amount, t.amount
+    SELECT
+        a.id AS id_account, a.balance AS balance,
+	d.amount AS deposit_amount, d.executed_at AS deposit_executed_at,
+	w.amount AS withdrawal_amount, w.executed_at AS withdrawal_executed_at,
+	t.amount AS transfer_amount, t.executed_at AS transfer_executed_at 
+    FROM accounts AS a
+    INNER JOIN deposits AS d ON d.id_account = a.id
+    INNER JOIN withdrawals AS w ON w.id_account = a.id
+    INNER JOIN transfers AS t ON
+        t.id_account_from = a.id OR
+        t.id_account_to = a.id
+    ORDER BY a.id;
 );
 
 
