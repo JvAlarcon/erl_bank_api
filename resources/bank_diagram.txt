@@ -8,34 +8,75 @@ Table customers {
 
 Table account_types {
   id SERIAL [pk, increment]
-  description VARCHAR(200) [not null]
+  label TEXT [not null]
 }
 
 Table accounts {
-  id SERIAL [pk, unique]
+  id SERIAL [pk, increment]
   id_customer INTEGER [pk, not null, ref: > customers.id]
   id_type INTEGER [pk, not null, ref: > account_types.id]
   balance INTEGER [not null]
 }
 
-Table deposits {
+Table transaction_status {
   id SERIAL [pk, increment]
-  account_id INTEGER [pk, not null, ref: > accounts.id]
-  executed_at TIMESTAMP [pk, not null]
-  amount INTEGER [not null]
+  label TEXT [not null]
 }
 
-Table withdrawals {
+Table transactions {
   id SERIAL [pk, increment]
-  account_id INTEGER [pk, not null, ref: > accounts.id]
-  executed_at TIMESTAMP [pk, not null]
-  amount INTEGER [not null]
+  status_id INTEGER [not null, ref: > transaction_status.id]
+  account_id INTEGER [not null, ref: > accounts.id]
+  trace_id TEXT [not null, unique]
+}
+
+Table transfers_kind {
+  label TEXT [pk, unique]
 }
 
 Table transfers {
   id SERIAL [pk, increment]
-  id_account_from INTEGER [pk, not null, ref: > accounts.id]
-  id_account_to INTEGER [pk, not null, ref: > accounts.id]
+  transaction_id INTEGER [not null, ref: > transactions.id]
+  kind TEXT [pk, not null, ref: > transfers_kind.label]
+  trace_id INTEGER [not null, unique]
+  from_account INTEGER [not null, unique]
   executed_at TIMESTAMP [pk, not null]
+}
+
+Table deposits {
+  transfer_id INTEGER [pk, unique, not null, ref: > transfers.id]
+  kind TEXT [not null, check: `kind = deposit`, 
+    ref: > transfers_kind.label, ref: > transfers.kind]
+  amount INTEGER [not null]
+}
+
+Table withdrawals {
+  transfer_id INTEGER [pk, unique, not null, ref: > transfers.id]
+  kind TEXT [not null, check: `kind = withdrawal`, 
+    ref: > transfers_kind.label, ref: > transfers.kind]
+  amount INTEGER [not null]
+}
+
+Table pix {
+  transfer_id INTEGER [pk, unique, not null, ref: > transfers.id]
+  kind TEXT [not null, check: `kind = pix`, 
+    ref: > transfers_kind.label, ref: > transfers.kind]
+  target_key TEXT [not null]
+  amount INTEGER [not null]
+}
+
+Table credit {
+  transfer_id INTEGER [pk, unique, not null, ref: > transfers.id]
+  kind TEXT [not null, check: `kind = credit`, 
+    ref: > transfers_kind.label, ref: > transfers.kind]
+  pan TEXT [not null]
+  amount INTEGER [not null]
+}
+
+Table debit {
+  transfer_id INTEGER [pk, unique, not null, ref: > transfers.id]
+  kind TEXT [not null, check: `kind = debit`, 
+    ref: > transfers_kind.label, ref: > transfers.kind]
+  pan TEXT [not null]
   amount INTEGER [not null]
 }
