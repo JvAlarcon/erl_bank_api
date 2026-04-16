@@ -7,7 +7,7 @@
 -define(POOL, db_pool).
 -define(TIMEOUT, 3000).
 
-% The behaviour hereof the functions below is the following:
+% The behaviour here of the functions below is the following:
 % Check a worker out of the pool;
 % Executes the query;
 % Then return the worker immediately.
